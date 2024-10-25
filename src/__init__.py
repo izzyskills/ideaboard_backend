@@ -10,12 +10,12 @@ from .middleware import register_middleware
 version = "v1"
 
 description = """
-A REST API for a book review web service.
+A REST API for a opensource idea sharing  web service.
 
 This REST API is able to;
-- Create Read Update And delete books
-- Add reviews to books
-- Add tags to Books e.t.c.
+- Create Read Update And delete ideas
+- Add vote and downvote to ideas
+- Add categories to ideas e.t.c.
     """
 
 version_prefix = f"/api/{version}"

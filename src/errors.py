@@ -6,55 +6,55 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
 
-class VidconfException(Exception):
+class IdeaBoardException(Exception):
     """This is the base class for all bookly errors"""
 
     pass
 
 
-class InvalidToken(VidconfException):
+class InvalidToken(IdeaBoardException):
     """User has provided an invalid or expired token"""
 
     pass
 
 
-class RevokedToken(VidconfException):
+class RevokedToken(IdeaBoardException):
     """User has provided a token that has been revoked"""
 
     pass
 
 
-class AccessTokenRequired(VidconfException):
+class AccessTokenRequired(IdeaBoardException):
     """User has provided a refresh token when an access token is needed"""
 
     pass
 
 
-class RefreshTokenRequired(VidconfException):
+class RefreshTokenRequired(IdeaBoardException):
     """User has provided an access token when a refresh token is needed"""
 
     pass
 
 
-class UserAlreadyExists(VidconfException):
+class UserAlreadyExists(IdeaBoardException):
     """User has provided an email for a user who exists during sign up."""
 
     pass
 
 
-class InvalidCredentials(VidconfException):
+class InvalidCredentials(IdeaBoardException):
     """User has provided wrong email or password during log in."""
 
     pass
 
 
-class InsufficientPermission(VidconfException):
+class InsufficientPermission(IdeaBoardException):
     """User does not have the neccessary permissions to perform an action."""
 
     pass
 
 
-class UserNotFound(VidconfException):
+class UserNotFound(IdeaBoardException):
     """User Not found"""
 
     pass
@@ -70,7 +70,7 @@ def create_exception_handler(
     status_code: int, initial_detail: Any
 ) -> Callable[[Request, Exception], JSONResponse]:
 
-    async def exception_handler(request: Request, exc: VidconfException):
+    async def exception_handler(request: Request, exc: IdeaBoardException):
 
         return JSONResponse(content=initial_detail, status_code=status_code)
 
