@@ -12,6 +12,8 @@ class User(SQLModel, table=True):
     created_at: datetime = Field(
         sa_column=Column(pg.TIMESTAMP, default=datetime.utcnow())
     )
+    is_verified: bool = Field(default=False)
+    password_hash: str
     ideas: List["Idea"] = Relationship(back_populates="creator")
     comments: List["Comment"] = Relationship(back_populates="user")
     votes: List["Vote"] = Relationship(back_populates="user")
