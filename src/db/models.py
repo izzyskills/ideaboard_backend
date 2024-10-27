@@ -1,3 +1,4 @@
+import uuid
 from sqlmodel import SQLModel, Field, Relationship, Column
 from typing import Optional, List
 from datetime import datetime
@@ -6,7 +7,9 @@ import sqlalchemy.dialects.postgresql as pg
 
 # User Model
 class User(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: uuid.UUID = Field(
+        sa_column=Column(pg.UUID, nullable=False, primary_key=True, default=uuid.uuid4)
+    )
     username: str = Field(index=True, unique=True)
     email: str = Field(index=True, unique=True)
     created_at: datetime = Field(
@@ -21,11 +24,13 @@ class User(SQLModel, table=True):
 
 # Idea Model
 class Idea(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: uuid.UUID = Field(
+        sa_column=Column(pg.UUID, nullable=False, primary_key=True, default=uuid.uuid4)
+    )
     title: str
     description: str
-    category_id: int = Field(foreign_key="category.id")
-    creator_id: int = Field(foreign_key="user.id")
+    category_id: uuid.UUID = Field(foreign_key="category.id")
+    creator_id: uuid.UUID = Field(foreign_key="user.id")
     created_at: datetime = Field(
         sa_column=Column(pg.TIMESTAMP, default=datetime.utcnow())
     )
@@ -39,10 +44,12 @@ class Idea(SQLModel, table=True):
 
 # Comment Model
 class Comment(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: uuid.UUID = Field(
+        sa_column=Column(pg.UUID, nullable=False, primary_key=True, default=uuid.uuid4)
+    )
     content: str
-    user_id: int = Field(foreign_key="user.id")
-    idea_id: int = Field(foreign_key="idea.id")
+    user_id: uuid.UUID = Field(foreign_key="user.id")
+    idea_id: uuid.UUID = Field(foreign_key="idea.id")
     created_at: datetime = Field(
         sa_column=Column(pg.TIMESTAMP, default=datetime.utcnow())
     )
@@ -52,9 +59,11 @@ class Comment(SQLModel, table=True):
 
 # Vote Model
 class Vote(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: int = Field(foreign_key="user.id")
-    idea_id: int = Field(foreign_key="idea.id")
+    id: uuid.UUID = Field(
+        sa_column=Column(pg.UUID, nullable=False, primary_key=True, default=uuid.uuid4)
+    )
+    user_id: uuid.UUID = Field(foreign_key="user.id")
+    idea_id: uuid.UUID = Field(foreign_key="idea.id")
     is_upvote: bool  # True for upvote, False for downvote
 
     user: User = Relationship(back_populates="votes")
@@ -63,6 +72,9 @@ class Vote(SQLModel, table=True):
 
 # Category Model
 class Category(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: uuid.UUID = Field(
+        sa_column=Column(pg.UUID, nullable=False, primary_key=True, default=uuid.uuid4)
+    )
+
     name: str = Field(unique=True)
     ideas: List[Idea] = Relationship(back_populates="category")
