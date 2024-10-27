@@ -66,6 +66,12 @@ class CategoryNotFound(IdeaBoardException):
     pass
 
 
+class IdeaNotFound(IdeaBoardException):
+    """Idea Not found"""
+
+    pass
+
+
 class AccountNotVerified(Exception):
     """Account not yet verified"""
 
@@ -110,8 +116,18 @@ def register_all_errors(app: FastAPI):
         create_exception_handler(
             status_code=status.HTTP_404_NOT_FOUND,
             initial_detail={
-                "message": "User not found",
-                "error_code": "user_not_found",
+                "message": "Category not found",
+                "error_code": "cartgory_not_found",
+            },
+        ),
+    )
+    app.add_exception_handler(
+        IdeaNotFound,
+        create_exception_handler(
+            status_code=status.HTTP_404_NOT_FOUND,
+            initial_detail={
+                "message": "Idea not found",
+                "error_code": "idea_not_found",
             },
         ),
     )
