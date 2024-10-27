@@ -5,6 +5,7 @@ from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from src.celery_tasks import send_email
 from src.db.main import get_session
 from src.db.redis import add_jti_to_blocklist
 
@@ -12,7 +13,6 @@ from .dependencies import AccessTokenBearer
 from .schemas import (
     UserCreateModel,
     UserLoginModel,
-    EmailModel,
     PasswordResetRequestModel,
     PasswordResetConfirmModel,
 )
@@ -112,12 +112,12 @@ async def login_users(
             access_token = create_access_token(
                 user_data={
                     "email": user.email,
-                    "user_uid": str(user.uid),
+                    "user_id": str(user.id),
                     "role": user.role,
                 }
             )
             refresh_token = create_access_token(
-                user_data={"email": user.email, "user_uid": str(user.uid)},
+                user_data={"email": user.email, "user_id": str(user.id)},
                 refresh=True,
                 expiry=timedelta(days=REFRESH_TOKEN_EXPIRY),
             )
@@ -133,7 +133,7 @@ async def login_users(
                 content={
                     "message": "Login successful",
                     "access_token": access_token,
-                    "user": {"email": user.email, "uid": str(user.uid)},
+                    "user": {"email": user.email, "id": str(user.id)},
                 }
             )
 
