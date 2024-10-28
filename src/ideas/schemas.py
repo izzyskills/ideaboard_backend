@@ -18,6 +18,4 @@ class CommentCreationModel(BaseModel):
 
 
 class VoteCreationModel(BaseModel):
-    user_id: uuid.UUID
-    idea_id: uuid.UUID
     is_upvote: bool

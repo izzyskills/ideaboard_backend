@@ -72,6 +72,12 @@ class IdeaNotFound(IdeaBoardException):
     pass
 
 
+class IdeaIdMismatch(IdeaBoardException):
+    """Idea Id mismatch"""
+
+    pass
+
+
 class AccountNotVerified(Exception):
     """Account not yet verified"""
 
@@ -203,6 +209,17 @@ def register_all_errors(app: FastAPI):
                 "message": "Account Not verified",
                 "error_code": "account_not_verified",
                 "resolution": "Please check your email for verification details",
+            },
+        ),
+    )
+    app.add_exception_handler(
+        IdeaIdMismatch,
+        create_exception_handler(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            initial_detail={
+                "message": "Idea Id mismatch",
+                "error_code": "idea_id_mismatch",
+                "resulution": "Please provide the correct idea id",
             },
         ),
     )
