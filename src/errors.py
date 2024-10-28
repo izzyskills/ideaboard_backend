@@ -78,6 +78,18 @@ class IdeaIdMismatch(IdeaBoardException):
     pass
 
 
+class VoteNotFound(IdeaBoardException):
+    """Vote Not found"""
+
+    pass
+
+
+class CommentNotFound(IdeaBoardException):
+    """Comment Not found"""
+
+    pass
+
+
 class AccountNotVerified(Exception):
     """Account not yet verified"""
 
@@ -134,6 +146,26 @@ def register_all_errors(app: FastAPI):
             initial_detail={
                 "message": "Idea not found",
                 "error_code": "idea_not_found",
+            },
+        ),
+    )
+    app.add_exception_handler(
+        VoteNotFound,
+        create_exception_handler(
+            status_code=status.HTTP_404_NOT_FOUND,
+            initial_detail={
+                "message": "Vote not found",
+                "error_code": "vote_not_found",
+            },
+        ),
+    )
+    app.add_exception_handler(
+        CommentNotFound,
+        create_exception_handler(
+            status_code=status.HTTP_404_NOT_FOUND,
+            initial_detail={
+                "message": "Comment not found",
+                "error_code": "comment_not_found",
             },
         ),
     )

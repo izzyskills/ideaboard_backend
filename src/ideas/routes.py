@@ -1,16 +1,18 @@
 import uuid
-from fastapi import WebSocket
+from fastapi import WebSocket, WebSocketDisconnect
 from fastapi import APIRouter, HTTPException
 from fastapi.param_functions import Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
 from src.auth.dependencies import AccessTokenBearer
 from src.errors import IdeaIdMismatch, IdeaNotFound, InvalidCredentials, UserNotFound
+from src.ideas.managers import VoteConnectionManager
 from .services import IdeaService
 from .schemas import IdeaCreationModel, VoteCreationModel, CommentCreationModel
 from src.db.main import get_session
 
 idea_router = APIRouter()
 idea_service = IdeaService()
+vote_manager = VoteConnectionManager()
 
 
 @idea_router.post("/")
@@ -35,21 +37,6 @@ async def get_idea_by_id(
     return idea
 
 
-@idea_router.post("/{idea_id}/vote")
-async def make_vote(
-    idea_id: uuid.UUID,
-    vote_data: VoteCreationModel,
-    token: dict = Depends(AccessTokenBearer()),
-    session: AsyncSession = Depends(get_session),
-):
-    if str(token["user"]["user_id"]) != vote_data.user_id:
-        raise InvalidCredentials
-    if idea_id != vote_data.idea_id:
-        raise IdeaIdMismatch
-    vote = await idea_service.create_vote(vote_data, session)
-    return vote
-
-
 @idea_router.post("/{idea_id}/comment")
 async def make_comment(
     idea_id: uuid.UUID,
@@ -65,12 +52,70 @@ async def make_comment(
     return comment
 
 
-@idea_router.websocket("/{idea_id}/vote/details")
-async def get_vote_details(
+@idea_router.websocket("/ideas/{idea_id}/votes/ws")
+async def vote_websocket(
     websocket: WebSocket,
     idea_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
 ):
-    await websocket.accept()
-    vote_details = await idea_service.get_vote_details(idea_id, session)
-    await websocket.send_json(vote_details)
+    await vote_manager.connect(websocket, idea_id)
+    try:
+        # Send initial vote counts
+        initial_counts = await idea_service.get_vote_counts(idea_id, session)
+        await websocket.send_json(initial_counts)
+
+        # Keep connection alive and handle any client messages
+        while True:
+            try:
+                await websocket.receive_text()  # Heartbeat or other client messages
+            except WebSocketDisconnect:
+                vote_manager.disconnect(websocket, idea_id)
+                break
+    except Exception as e:
+        vote_manager.disconnect(websocket, idea_id)
+        raise
+
+
+@idea_router.post("/ideas/{idea_id}/votes")
+async def vote(
+    idea_id: uuid.UUID,
+    vote_data: VoteCreationModel,
+    token: dict = Depends(AccessTokenBearer()),
+    session: AsyncSession = Depends(get_session),
+):
+
+    # Handle the vote
+    try:
+        await idea_service.handle_vote(
+            idea_id, token["user"]["user_id"], vote_data, session
+        )
+
+        # Get updated vote counts
+        updated_counts = await idea_service.get_vote_counts(idea_id, session)
+
+        # Broadcast update to all connected clients
+        await vote_manager.broadcast_vote_update(idea_id, updated_counts)
+
+        return updated_counts
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@idea_router.delete("/ideas/{idea_id}/votes")
+async def remove_vote(
+    idea_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    token: dict = Depends(AccessTokenBearer()),
+):
+    try:
+        await idea_service.delete_vote(idea_id, token["user"]["user_id"], session)
+        updated_counts = await idea_service.get_vote_counts(idea_id, session)
+        await vote_manager.broadcast_vote_update(idea_id, updated_counts)
+        return updated_counts
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@idea_router.get("/ideas/{idea_id}/votes")
+async def get_votes(idea_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
+    return await idea_service.get_vote_counts(idea_id, session)

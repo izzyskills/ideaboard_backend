@@ -3,7 +3,7 @@ import uuid
 from sqlmodel import and_, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from src.db.models import Idea, Comment, Vote, Category, User
-from src.errors import CategoryNotFound, IdeaNotFound, UserNotFound
+from src.errors import CategoryNotFound, IdeaNotFound, UserNotFound, VoteNotFound
 from src.ideas.schemas import CommentCreationModel, IdeaCreationModel, VoteCreationModel
 
 
@@ -110,3 +110,18 @@ class IdeaService:
             session.add(new_vote)
             await session.commit()
             return new_vote
+
+    async def delete_vote(
+        self, idea_id: uuid.UUID, user_id: uuid.UUID, session: AsyncSession
+    ):
+        result = await session.exec(
+            select(Vote).where(and_(Vote.idea_id == idea_id, Vote.user_id == user_id))
+        )
+        vote = result.scalar_one_or_none()
+
+        if vote:
+            await session.delete(vote)
+            await session.commit()
+            return vote
+
+        raise VoteNotFound
