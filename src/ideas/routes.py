@@ -1,13 +1,20 @@
+from typing import List, Optional, Tuple
 import uuid
 from fastapi import WebSocket, WebSocketDisconnect
 from fastapi import APIRouter, HTTPException
 from fastapi.param_functions import Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
 from src.auth.dependencies import AccessTokenBearer
+from src.db.models import Idea
 from src.errors import IdeaIdMismatch, IdeaNotFound, InvalidCredentials, UserNotFound
 from src.ideas.managers import VoteConnectionManager
 from .services import IdeaService
-from .schemas import IdeaCreationModel, VoteCreationModel, CommentCreationModel
+from .schemas import (
+    IdeaCreationModel,
+    IdeaSearchParams,
+    VoteCreationModel,
+    CommentCreationModel,
+)
 from src.db.main import get_session
 
 idea_router = APIRouter()
@@ -25,6 +32,13 @@ async def create_idea(
         raise InvalidCredentials
     idea = await idea_service.create_idea(idea_data, session)
     return idea
+
+
+@idea_router.get("/ideas/search", response_model=Tuple[List[Idea], Optional[uuid.UUID]])
+async def search_ideas_route(
+    params: IdeaSearchParams = Depends(), session: AsyncSession = Depends(get_session)
+):
+    return await idea_service.search_ideas(session, params)
 
 
 @idea_router.get("/{idea_id}")

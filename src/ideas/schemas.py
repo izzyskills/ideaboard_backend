@@ -6,9 +6,10 @@ from typing import List, Optional
 class IdeaCreationModel(BaseModel):
     title: str
     description: str
-    category_id: uuid.UUID
+    category_ids: List[int]
     creator_id: uuid.UUID
     catergory_name: str
+    project_id: uuid.UUID
 
 
 class CommentCreationModel(BaseModel):
@@ -19,3 +20,18 @@ class CommentCreationModel(BaseModel):
 
 class VoteCreationModel(BaseModel):
     is_upvote: bool
+
+
+class IdeaSearchParams(BaseModel):
+    category_ids: Optional[List[int]] = None
+    project_id: Optional[uuid.UUID] = None
+    text: Optional[str] = None
+    limit: Optional[int] = 10
+    cursor: Optional[uuid.UUID] = None
+
+
+class ProjectCreationModel(BaseModel):
+    name: str
+    description: str
+    url: str
+    creator_id: uuid.UUID

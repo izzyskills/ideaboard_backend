@@ -66,6 +66,12 @@ class CategoryNotFound(IdeaBoardException):
     pass
 
 
+class ProjectNotFound(IdeaBoardException):
+    """Project Not found"""
+
+    pass
+
+
 class IdeaNotFound(IdeaBoardException):
     """Idea Not found"""
 
@@ -136,6 +142,16 @@ def register_all_errors(app: FastAPI):
             initial_detail={
                 "message": "Category not found",
                 "error_code": "cartgory_not_found",
+            },
+        ),
+    )
+    app.add_exception_handler(
+        ProjectNotFound,
+        create_exception_handler(
+            status_code=status.HTTP_404_NOT_FOUND,
+            initial_detail={
+                "message": "Project not found",
+                "error_code": "project_not_found",
             },
         ),
     )

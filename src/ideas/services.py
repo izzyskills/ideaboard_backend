@@ -1,10 +1,22 @@
 from datetime import datetime
+from typing import List, Optional, Tuple
 import uuid
-from sqlmodel import and_, select
+from sqlmodel import and_, desc, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
-from src.db.models import Idea, Comment, Vote, Category, User
-from src.errors import CategoryNotFound, IdeaNotFound, UserNotFound, VoteNotFound
-from src.ideas.schemas import CommentCreationModel, IdeaCreationModel, VoteCreationModel
+from src.db.models import Idea, Comment, Project, Vote, Category, User
+from src.errors import (
+    CategoryNotFound,
+    IdeaNotFound,
+    ProjectNotFound,
+    UserNotFound,
+    VoteNotFound,
+)
+from src.ideas.schemas import (
+    CommentCreationModel,
+    IdeaCreationModel,
+    IdeaSearchParams,
+    VoteCreationModel,
+)
 
 
 class IdeaService:
@@ -17,19 +29,33 @@ class IdeaService:
         user = user.first()
         if user is None:
             raise UserNotFound
-        if idea_data_dict["category_id"] == -1:
-            new_category = Category(**{"name": idea_data_dict["category_name"]})
-            idea_data_dict["category_id"] = new_category.id
-        else:
-            category = (
-                await session.exec(
-                    select(Category).where(Category.id == idea_data_dict["category_id"])
-                )
-            ).first()
-            if category is None:
-                raise CategoryNotFound
 
-        new_idea = Idea(**idea_data_dict)
+        # Validate categories
+        category_ids = idea_data_dict["category_ids"]
+        categories = await session.exec(
+            select(Category).where(Category.id.in_(category_ids))
+        )
+        categories = categories.scalars().all()
+        if len(categories) != len(category_ids):
+            raise CategoryNotFound
+
+        # Validate project
+        project_id = idea_data_dict["project_id"]
+        project = await session.execute(select(Project).where(Project.id == project_id))
+        project = project.scalar_one_or_none()
+        if project is None:
+            raise ProjectNotFound
+
+        # Create new idea
+        new_idea = Idea(
+            **{
+                "title": idea_data_dict["title"],
+                "description": idea_data_dict["description"],
+                "creator_id": idea_data_dict["creator_id"],
+                "project_id": idea_data_dict["project_id"],
+                "categories": categories,
+            }
+        )
         session.add(new_idea)
         await session.commit()
         await session.refresh(new_idea)
@@ -40,6 +66,33 @@ class IdeaService:
         idea = await session.exec(select(Idea).where(Idea.id == idea_id))
         idea = idea.first()
         return idea
+
+    async def search_ideas(
+        self, session: AsyncSession, params: IdeaSearchParams
+    ) -> Tuple[List[Idea], Optional[uuid.UUID]]:
+        query = select(Idea)
+
+        if params.category_ids:
+            query = query.where(Idea.categories.any(id.in_(params.category_ids)))
+        if params.project_id:
+            query = query.where(Idea.project_id == params.project_id)
+        if params.text:
+            ts_query = func.to_tsquery(params.text)
+            query = query.where(
+                func.to_tsvector("english", Idea.title).match(ts_query)
+                | func.to_tsvector("english", Idea.description).match(ts_query)
+            )
+        if params.cursor:
+            query = query.where(Idea.id > params.cursor)
+
+        query = query.order_by(desc(Idea.created_at)).limit(params.limit)
+
+        results = await session.exec(query)
+        ideas = results.scalars().all()
+
+        next_cursor = ideas[-1].id if len(ideas) == params.limit else None
+
+        return ideas, next_cursor
 
     async def create_comment(
         self, comment_data: CommentCreationModel, session: AsyncSession

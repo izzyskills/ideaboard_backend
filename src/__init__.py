@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from src.auth.routes import auth_router
 from src.ideas.routes import idea_router
+from src.projects.routes import project_router
 from .errors import register_all_errors
 
 from .middleware import register_middleware
@@ -41,4 +42,7 @@ register_middleware(app)
 
 
 app.include_router(auth_router, prefix=f"{version_prefix}/auth", tags=["auth"])
+app.include_router(
+    project_router, prefix=f"{version_prefix}/project", tags=["projects"]
+)
 app.include_router(idea_router, prefix=f"{version_prefix}/ideas", tags=["ideas"])

@@ -1,5 +1,5 @@
 import uuid
-from sqlmodel import ForeignKey, SQLModel, Field, Relationship, Column, Table
+from sqlmodel import ForeignKey, Index, SQLModel, Field, Relationship, Column, Table
 from typing import Optional, List
 from datetime import datetime
 import sqlalchemy.dialects.postgresql as pg
@@ -20,6 +20,7 @@ class User(SQLModel, table=True):
     ideas: List["Idea"] = Relationship(back_populates="creator")
     comments: List["Comment"] = Relationship(back_populates="user")
     votes: List["Vote"] = Relationship(back_populates="user")
+    projects: List["Project"] = Relationship(back_populates="creator")
 
 
 # Project Model
@@ -29,7 +30,15 @@ class Project(SQLModel, table=True):
     )
 
     name: str = Field(unique=True)
+    description: str
+    url: str
+    creator_id: uuid.UUID = Field(foreign_key="user.id")
+    creted_at: datetime = Field(
+        sa_column=Column(pg.TIMESTAMP, default=datetime.utcnow())
+    )
+
     ideas: List["Idea"] = Relationship(back_populates="category")
+    creator: User = Relationship(back_populates="projects")
 
 
 class IdeaCategoryAssociation(SQLModel, table=True):
@@ -56,7 +65,7 @@ class Idea(SQLModel, table=True):
     )
     title: str
     description: str
-    category_id: uuid.UUID = Field(foreign_key="category.id")
+    project_id: uuid.UUID = Field(foreign_key="project.id")
     creator_id: uuid.UUID = Field(foreign_key="user.id")
     created_at: datetime = Field(
         sa_column=Column(pg.TIMESTAMP, default=datetime.utcnow())
@@ -71,6 +80,7 @@ class Idea(SQLModel, table=True):
 
     comments: List["Comment"] = Relationship(back_populates="idea")
     votes: List["Vote"] = Relationship(back_populates="idea")
+    __table_args__ = (Index("idx_idea_title_description", "title", "description"),)
 
 
 # Comment Model
