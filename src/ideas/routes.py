@@ -52,7 +52,7 @@ async def make_comment(
     return comment
 
 
-@idea_router.websocket("/ideas/{idea_id}/votes/ws")
+@idea_router.websocket("/{idea_id}/votes/ws")
 async def vote_websocket(
     websocket: WebSocket,
     idea_id: uuid.UUID,
@@ -101,6 +101,11 @@ async def vote(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@idea_router.get("/ideas/{idea_id}/votes")
+async def get_votes(idea_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
+    return await idea_service.get_vote_counts(idea_id, session)
+
+
 @idea_router.delete("/ideas/{idea_id}/votes")
 async def remove_vote(
     idea_id: uuid.UUID,
@@ -114,8 +119,3 @@ async def remove_vote(
         return updated_counts
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-
-
-@idea_router.get("/ideas/{idea_id}/votes")
-async def get_votes(idea_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
-    return await idea_service.get_vote_counts(idea_id, session)

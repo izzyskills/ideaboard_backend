@@ -1,5 +1,5 @@
 import uuid
-from sqlmodel import SQLModel, Field, Relationship, Column
+from sqlmodel import ForeignKey, SQLModel, Field, Relationship, Column, Table
 from typing import Optional, List
 from datetime import datetime
 import sqlalchemy.dialects.postgresql as pg
@@ -22,6 +22,33 @@ class User(SQLModel, table=True):
     votes: List["Vote"] = Relationship(back_populates="user")
 
 
+# Project Model
+class Project(SQLModel, table=True):
+    id: uuid.UUID = Field(
+        sa_column=Column(pg.UUID, nullable=False, primary_key=True, default=uuid.uuid4)
+    )
+
+    name: str = Field(unique=True)
+    ideas: List["Idea"] = Relationship(back_populates="category")
+
+
+class IdeaCategoryAssociation(SQLModel, table=True):
+    idea_id: uuid.UUID = Field(
+        sa_column=Column(pg.UUID, ForeignKey("idea.id"), primary_key=True)
+    )
+    category_id: int = Field(ForeignKey("category.id"), primary_key=True)
+
+
+# Category Model
+class Category(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str
+
+    ideas: List["Idea"] = Relationship(
+        back_populates="categories", link_model=IdeaCategoryAssociation
+    )
+
+
 # Idea Model
 class Idea(SQLModel, table=True):
     id: uuid.UUID = Field(
@@ -37,7 +64,11 @@ class Idea(SQLModel, table=True):
     vote_count: int = Field(default=0, index=True)
 
     creator: User = Relationship(back_populates="ideas")
-    category: "Category" = Relationship(back_populates="ideas")
+    project: Project = Relationship(back_populates="ideas")
+    categories: List["Category"] = Relationship(
+        back_populates="ideas", link_model=IdeaCategoryAssociation
+    )
+
     comments: List["Comment"] = Relationship(back_populates="idea")
     votes: List["Vote"] = Relationship(back_populates="idea")
 
@@ -68,13 +99,3 @@ class Vote(SQLModel, table=True):
 
     user: User = Relationship(back_populates="votes")
     idea: Idea = Relationship(back_populates="votes")
-
-
-# Category Model
-class Category(SQLModel, table=True):
-    id: uuid.UUID = Field(
-        sa_column=Column(pg.UUID, nullable=False, primary_key=True, default=uuid.uuid4)
-    )
-
-    name: str = Field(unique=True)
-    ideas: List[Idea] = Relationship(back_populates="category")
