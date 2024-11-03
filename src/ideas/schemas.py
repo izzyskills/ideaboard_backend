@@ -28,10 +28,3 @@ class IdeaSearchParams(BaseModel):
     text: Optional[str] = None
     limit: Optional[int] = 10
     cursor: Optional[uuid.UUID] = None
-
-
-class ProjectCreationModel(BaseModel):
-    name: str
-    description: str
-    url: str
-    creator_id: uuid.UUID

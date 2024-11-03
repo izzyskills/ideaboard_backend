@@ -4,8 +4,11 @@ from fastapi import WebSocket, WebSocketDisconnect
 from fastapi import APIRouter, HTTPException
 from fastapi.param_functions import Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
-from src.auth.dependencies import AccessTokenBearer
-from src.db.models import Idea
+from src.auth.dependencies import (
+    AccessTokenBearer,
+    get_optional_current_user,
+)
+from src.db.models import Idea, User
 from src.errors import IdeaIdMismatch, IdeaNotFound, InvalidCredentials, UserNotFound
 from src.ideas.managers import VoteConnectionManager
 from .services import IdeaService
@@ -34,11 +37,16 @@ async def create_idea(
     return idea
 
 
-@idea_router.get("/ideas/search", response_model=Tuple[List[Idea], Optional[uuid.UUID]])
+@idea_router.get("/")
 async def search_ideas_route(
-    params: IdeaSearchParams = Depends(), session: AsyncSession = Depends(get_session)
+    params: IdeaSearchParams = Depends(),
+    current_user: Optional[User] = Depends(get_optional_current_user),
+    session: AsyncSession = Depends(get_session),
 ):
-    return await idea_service.search_ideas(session, params)
+    ideas, next_cursor = await idea_service.search_ideas(
+        session, params, current_user.id if current_user else None
+    )
+    return {"items": ideas, "next_cursor": str(next_cursor) if next_cursor else None}
 
 
 @idea_router.get("/{idea_id}")
