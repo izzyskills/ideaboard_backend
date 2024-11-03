@@ -13,9 +13,8 @@ class UserCreateModel(BaseModel):
     model_config = {
         "json_schema_extra": {
             "example": {
-                "first_name": "John",
-                "last_name": "Doe",
                 "email": "johndoe123@co.com",
+                "username": "johndoe",
                 "password": "testpass123",
             }
         }
@@ -25,12 +24,10 @@ class UserCreateModel(BaseModel):
 class UserModel(BaseModel):
     uid: uuid.UUID
     email: str
-    first_name: str
-    last_name: str
+    username: str
     is_verified: bool
     password_hash: str = Field(exclude=True)
     created_at: datetime
-    update_at: datetime
 
 
 class UserLoginModel(BaseModel):

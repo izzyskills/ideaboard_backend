@@ -1,4 +1,4 @@
-from typing import Any, List
+from typing import Any, List, Optional
 
 from fastapi import Depends, Request, status
 from fastapi.exceptions import HTTPException
@@ -29,6 +29,8 @@ class TokenBearer(HTTPBearer):
 
     async def __call__(self, request: Request) -> HTTPAuthorizationCredentials | None:
         creds = await super().__call__(request)
+        if not creds:
+            return None
 
         token = creds.credentials
 
@@ -65,6 +67,15 @@ class RefreshTokenBearer(TokenBearer):
             raise RefreshTokenRequired()
 
 
+class OptionalAccessTokenBearer(TokenBearer):
+    def __init__(self):
+        super().__init__(auto_error=False)
+
+    def verify_token_data(self, token_data: dict) -> None:
+        if token_data and token_data["refresh"]:
+            return None
+
+
 async def get_current_user(
     token_details: dict = Depends(AccessTokenBearer()),
     session: AsyncSession = Depends(get_session),
@@ -76,14 +87,13 @@ async def get_current_user(
     return user
 
 
-class RoleChecker:
-    def __init__(self, allowed_roles: List[str]) -> None:
-        self.allowed_roles = allowed_roles
+async def get_optional_current_user(
+    token_details: Optional[dict] = Depends(OptionalAccessTokenBearer()),
+    session: AsyncSession = Depends(get_session),
+) -> Optional[User]:
+    if not token_details:
+        return None
 
-    def __call__(self, current_user: User = Depends(get_current_user)) -> Any:
-        if not current_user.is_verified:
-            raise AccountNotVerified()
-        if current_user.role in self.allowed_roles:
-            return True
-
-        raise InsufficientPermission()
+    user_email = token_details["user"]["email"]
+    user = await user_service.get_user_by_email(user_email, session)
+    return user

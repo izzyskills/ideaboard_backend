@@ -113,7 +113,6 @@ async def login_users(
                 user_data={
                     "email": user.email,
                     "user_id": str(user.id),
-                    "role": user.role,
                 }
             )
             refresh_token = create_access_token(
@@ -133,7 +132,7 @@ async def login_users(
                 content={
                     "message": "Login successful",
                     "access_token": access_token,
-                    "user": {"email": user.email, "id": str(user.id)},
+                    "user": {"email": user.email, "user_id": str(user.id)},
                 }
             )
 
