@@ -1,3 +1,4 @@
+from datetime import datetime
 import uuid
 from pydantic import BaseModel
 from typing import List, Optional
@@ -23,8 +24,8 @@ class VoteCreationModel(BaseModel):
 
 
 class IdeaSearchParams(BaseModel):
-    category_ids: Optional[List[int]] = None
     project_id: Optional[uuid.UUID] = None
+    category_ids: Optional[List[int]] = None
     text: Optional[str] = None
     limit: Optional[int] = 10
-    cursor: Optional[uuid.UUID] = None
+    cursor: Optional[datetime] = None

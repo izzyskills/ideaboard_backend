@@ -120,31 +120,33 @@ class IdeaService:
                     Idea.categories.any(Category.id.in_(params.category_ids))
                 )
 
+            # Debug print for project_id
+            print(f"Project ID: {params.project_id}")
+
             # Project filter
             if params.project_id:
                 filters.append(Idea.project_id == params.project_id)
 
-            # Text search
+            # Text search using the pre-computed search_vector
             if params.text:
-                search_text = " & ".join(
-                    word.strip() for word in params.text.replace("'", "").split()
+                search_query = f"%{params.text}%"
+                filters.append(
+                    or_(
+                        Idea.title.ilike(search_query),
+                        Idea.description.ilike(search_query),
+                    )
                 )
-                ts_query = func.to_tsquery("english", search_text + ":*")
-
-                text_search = or_(
-                    func.to_tsvector("english", Idea.title).match(ts_query),
-                    func.to_tsvector("english", Idea.description).match(ts_query),
-                    func.to_tsvector("english", Project.name).match(ts_query),
-                )
-                filters.append(text_search)
-
             # Cursor pagination
             if params.cursor:
-                filters.append(Idea.id > params.cursor)
+                print(f"Cursor: {params.cursor}")
+                filters.append(Idea.created_at < params.cursor)
 
             # Apply all filters
             if filters:
                 query = query.where(and_(*filters))
+
+            # Debug print for final query
+            print(f"Final Query: {query}")
 
             # Add ordering and limit
             query = query.order_by(desc(Idea.created_at)).limit(params.limit)
@@ -152,6 +154,9 @@ class IdeaService:
             # Execute query
             results = await session.execute(query)
             rows = results.all()
+
+            # Debug print for query results
+            print(f"Query Results: {rows}")
 
             # Process results into dictionaries
             ideas_with_votes = []
@@ -188,7 +193,7 @@ class IdeaService:
                 ideas_with_votes.append(idea_dict)
 
             # Calculate next cursor
-            next_cursor = rows[-1][0].id if len(rows) == params.limit else None
+            next_cursor = rows[-1][0].created_at if len(rows) == params.limit else None
 
             return ideas_with_votes, next_cursor
 
