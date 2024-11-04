@@ -1,5 +1,14 @@
 import uuid
-from sqlmodel import ForeignKey, Index, SQLModel, Field, Relationship, Column, Table
+from sqlmodel import (
+    Computed,
+    ForeignKey,
+    Index,
+    SQLModel,
+    Field,
+    Relationship,
+    Column,
+    Table,
+)
 from typing import Optional, List
 from datetime import datetime
 import sqlalchemy.dialects.postgresql as pg
@@ -37,7 +46,7 @@ class Project(SQLModel, table=True):
         sa_column=Column(pg.TIMESTAMP, default=datetime.utcnow())
     )
 
-    ideas: List["Idea"] = Relationship(back_populates="category")
+    ideas: List["Idea"] = Relationship(back_populates="project")
     creator: User = Relationship(back_populates="projects")
 
 
@@ -48,17 +57,19 @@ class IdeaCategoryAssociation(SQLModel, table=True):
     category_id: int = Field(ForeignKey("category.id"), primary_key=True)
 
 
-# Category Model
 class Category(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     name: str
-
     ideas: List["Idea"] = Relationship(
-        back_populates="categories", link_model=IdeaCategoryAssociation
+        back_populates="categories",
+        link_model=IdeaCategoryAssociation,
+        sa_relationship_kwargs={
+            "primaryjoin": "Category.id == IdeaCategoryAssociation.category_id",
+            "secondaryjoin": "Idea.id == IdeaCategoryAssociation.idea_id",
+        },
     )
 
 
-# Idea Model
 class Idea(SQLModel, table=True):
     id: uuid.UUID = Field(
         sa_column=Column(pg.UUID, nullable=False, primary_key=True, default=uuid.uuid4)
@@ -70,17 +81,29 @@ class Idea(SQLModel, table=True):
     created_at: datetime = Field(
         sa_column=Column(pg.TIMESTAMP, default=datetime.utcnow())
     )
-    vote_count: int = Field(default=0, index=True)
-
     creator: User = Relationship(back_populates="ideas")
     project: Project = Relationship(back_populates="ideas")
     categories: List["Category"] = Relationship(
-        back_populates="ideas", link_model=IdeaCategoryAssociation
+        back_populates="ideas",
+        link_model=IdeaCategoryAssociation,
+        sa_relationship_kwargs={
+            "primaryjoin": "Idea.id == IdeaCategoryAssociation.idea_id",
+            "secondaryjoin": "Category.id == IdeaCategoryAssociation.category_id",
+        },
     )
-
     comments: List["Comment"] = Relationship(back_populates="idea")
     votes: List["Vote"] = Relationship(back_populates="idea")
-    __table_args__ = (Index("idx_idea_title_description", "title", "description"),)
+    search_vector: str = Field(
+        sa_column=Column(
+            pg.TSVECTOR,
+            Computed(
+                "to_tsvector('english', title || ' ' || description)", persisted=True
+            ),
+        )
+    )
+    __table_args__ = (
+        Index("idx_idea_search_vector", "search_vector", postgresql_using="gin"),
+    )
 
 
 # Comment Model
