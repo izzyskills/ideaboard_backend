@@ -20,6 +20,12 @@ class ProjectService:
 
         return project
 
+    async def get_all_projects(self, session: AsyncSession):
+        statement = select(Project)
+        result = await session.exec(statement)
+        projects = result.all()
+        return projects
+
     async def project_exists(self, project_id: uuid.UUID, session: AsyncSession):
         project = await self.get_project_by_id(project_id, session)
 

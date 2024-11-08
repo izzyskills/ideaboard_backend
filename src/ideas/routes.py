@@ -98,7 +98,7 @@ async def vote_websocket(
         raise
 
 
-@idea_router.post("/ideas/{idea_id}/votes")
+@idea_router.post("/{idea_id}/votes")
 async def vote(
     idea_id: uuid.UUID,
     vote_data: VoteCreationModel,
@@ -108,27 +108,32 @@ async def vote(
 
     # Handle the vote
     try:
+        print(token["user"]["user_id"])
         await idea_service.handle_vote(
             idea_id, token["user"]["user_id"], vote_data, session
         )
 
+        print("idea services")
         # Get updated vote counts
-        updated_counts = await idea_service.get_vote_counts(idea_id, session)
+        updated_counts = await idea_service.get_vote_counts(
+            idea_id, session, current_user_id=token["user"]["user_id"]
+        )
 
         # Broadcast update to all connected clients
-        await vote_manager.broadcast_vote_update(idea_id, updated_counts)
+        # await vote_manager.broadcast_vote_update(idea_id, updated_counts)
 
+        print(updated_counts)
         return updated_counts
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@idea_router.get("/ideas/{idea_id}/votes")
+@idea_router.get("/{idea_id}/votes")
 async def get_votes(idea_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
     return await idea_service.get_vote_counts(idea_id, session)
 
 
-@idea_router.delete("/ideas/{idea_id}/votes")
+@idea_router.delete("/{idea_id}/votes")
 async def remove_vote(
     idea_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),

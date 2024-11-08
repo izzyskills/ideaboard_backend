@@ -120,9 +120,6 @@ class IdeaService:
                     Idea.categories.any(Category.id.in_(params.category_ids))
                 )
 
-            # Debug print for project_id
-            print(f"Project ID: {params.project_id}")
-
             # Project filter
             if params.project_id:
                 filters.append(Idea.project_id == params.project_id)
@@ -138,15 +135,11 @@ class IdeaService:
                 )
             # Cursor pagination
             if params.cursor:
-                print(f"Cursor: {params.cursor}")
                 filters.append(Idea.created_at < params.cursor)
 
             # Apply all filters
             if filters:
                 query = query.where(and_(*filters))
-
-            # Debug print for final query
-            print(f"Final Query: {query}")
 
             # Add ordering and limit
             query = query.order_by(desc(Idea.created_at)).limit(params.limit)
@@ -154,9 +147,6 @@ class IdeaService:
             # Execute query
             results = await session.execute(query)
             rows = results.all()
-
-            # Debug print for query results
-            print(f"Query Results: {rows}")
 
             # Process results into dictionaries
             ideas_with_votes = []
@@ -200,6 +190,85 @@ class IdeaService:
         except Exception as e:
             print(f"Search error: {str(e)}")
 
+    async def get_idea_by_id(
+        self,
+        idea_id: uuid.UUID,
+        session: AsyncSession,
+        current_user_id: uuid.UUID | None = None,
+    ):
+        query = (
+            select(
+                Idea,
+                Project.name.label("project_name"),
+                User.username.label("creator_username"),
+                func.count(Vote.id).filter(Vote.is_upvote.is_(True)).label("upvotes"),
+                func.count(Vote.id)
+                .filter(Vote.is_upvote.is_(False))
+                .label("downvotes"),
+                func.count(
+                    case(
+                        (
+                            and_(
+                                Vote.user_id == current_user_id,
+                                Vote.is_upvote.is_(True),
+                            ),
+                            1,
+                        )
+                    )
+                ).label("user_upvoted"),
+                func.count(
+                    case(
+                        (
+                            and_(
+                                Vote.user_id == current_user_id,
+                                Vote.is_upvote.is_(False),
+                            ),
+                            1,
+                        )
+                    )
+                ).label("user_downvoted"),
+            )
+            .select_from(Idea)
+            .outerjoin(Vote)
+            .join(Project, Project.id == Idea.project_id)
+            .join(User, User.id == Idea.creator_id)
+            .group_by(Idea.id, Project.id, User.id)
+        ).where(Idea.id == idea_id)
+        results = await session.execute(query)
+        row = results.one_or_none()
+        if row:
+            idea = row[0]  # The Idea object
+            idea_dict = {
+                "id": str(idea.id),
+                "title": idea.title,
+                "description": idea.description,
+                "project_id": str(idea.project_id),
+                "project_name": row.project_name,
+                "creator_id": str(idea.creator_id),
+                "creator_username": row.creator_username,
+                "created_at": idea.created_at.isoformat(),
+                "votes": {
+                    "upvotes": row.upvotes,
+                    "downvotes": row.downvotes,
+                    "total": row.upvotes + row.downvotes,
+                    "score": row.upvotes - row.downvotes,
+                },
+            }
+
+            # Add user's vote status if user_id was provided
+            if current_user_id:
+                idea_dict["user_vote"] = {
+                    "has_voted": bool(row.user_upvoted or row.user_downvoted),
+                    "is_upvote": (
+                        bool(row.user_upvoted)
+                        if (row.user_upvoted or row.user_downvoted)
+                        else None
+                    ),
+                }
+            return idea_dict
+        else:
+            return None
+
     async def create_comment(
         self, comment_data: CommentCreationModel, session: AsyncSession
     ):
@@ -222,13 +291,71 @@ class IdeaService:
         await session.refresh(comment)
         return comment
 
+    async def get_vote_counts(
+        self,
+        idea_id: uuid.UUID,
+        session: AsyncSession,
+        current_user_id: uuid.UUID | None = None,
+    ):
+        print("hello vote counts")
+        query = select(
+            func.count(case((Vote.is_upvote.is_(True), 1))).label("upvotes"),
+            func.count(case((Vote.is_upvote.is_(False), 1))).label("downvotes"),
+            func.count(
+                case(
+                    (
+                        and_(
+                            Vote.user_id == current_user_id,
+                            Vote.is_upvote.is_(True),
+                        ),
+                        1,
+                    )
+                )
+            ).label("user_upvoted"),
+            func.count(
+                case(
+                    (
+                        and_(
+                            Vote.user_id == current_user_id,
+                            Vote.is_upvote.is_(False),
+                        ),
+                        1,
+                    )
+                )
+            ).label("user_downvoted"),
+        ).where(Vote.idea_id == idea_id)
+
+        result = await session.execute(query)
+        row = result.one()
+        # Assuming `row` is an object with the required attributes
+        print(f"Upvotes: {row.upvotes}")
+        print(f"Downvotes: {row.downvotes}")
+        print(f"User Upvoted: {row.user_upvoted}")
+        print(f"User Downvoted: {row.user_downvoted}")
+
+        print(row)
+        dict = {
+            "upvotes": row.upvotes,
+            "downvotes": row.downvotes,
+            "total": row.upvotes + row.downvotes,
+            "score": row.upvotes - row.downvotes,
+            "has_voted": bool(row.user_upvoted or row.user_downvoted),
+            "is_upvote": (
+                bool(row.user_upvoted)
+                if (row.user_upvoted or row.user_downvoted)
+                else None
+            ),
+        }
+        print(dict)
+        return dict
+
     async def handle_vote(
         self,
         idea_id: uuid.UUID,
         user_id: uuid.UUID,
         vote_data: VoteCreationModel,
         session: AsyncSession,
-    ) -> Vote:
+    ) -> Vote | None:
         # Check for existing vote
         result = await session.exec(
             select(Vote).where(and_(Vote.idea_id == idea_id, Vote.user_id == user_id))
@@ -239,9 +366,12 @@ class IdeaService:
             # Update existing vote if different
             if existing_vote.is_upvote != vote_data.is_upvote:
                 existing_vote.is_upvote = vote_data.is_upvote
-                existing_vote.updated_at = datetime.utcnow()
                 await session.commit()
-            return existing_vote
+                return existing_vote
+            else:
+                await session.delete(existing_vote)
+                await session.commit()
+                return None
         else:
             # Create new vote
             new_vote = Vote(

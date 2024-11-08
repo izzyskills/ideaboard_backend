@@ -1,3 +1,4 @@
+from typing import List
 import uuid
 from fastapi import APIRouter, Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -10,6 +11,12 @@ from src.errors import InvalidCredentials, ProjectNotFound, UserNotFound
 
 project_router = APIRouter()
 project_servie = ProjectService()
+
+
+@project_router.get("/", response_model=List[Project])
+async def get_all_projects(session: AsyncSession = Depends(get_session)):
+    projects = await project_servie.get_all_projects(session)
+    return projects
 
 
 @project_router.get("/{project_id}", response_model=Project)
