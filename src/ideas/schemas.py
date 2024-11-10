@@ -24,7 +24,7 @@ class VoteCreationModel(BaseModel):
 
 class IdeaSearchParams(BaseModel):
     project_id: Optional[uuid.UUID] = None
-    category_ids: Optional[List[int]] = None
+    # category_ids: Optional[List[int]] = None
     text: Optional[str] = None
     limit: Optional[int] = 10
     cursor: Optional[datetime] = None

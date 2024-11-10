@@ -36,7 +36,7 @@ class ProjectService:
     ):
         project_data_dict = project_data.model_dump()
 
-        created_by_id = project_data_dict["created_by"]
+        created_by_id = project_data_dict["creator_id"]
         user = await session.exec(select(User).where(User.id == created_by_id))
         user = user.first()
         if user is None:
@@ -44,7 +44,7 @@ class ProjectService:
 
         new_project = Project(
             **{
-                "title": project_data_dict["title"],
+                "name": project_data_dict["name"],
                 "description": project_data_dict["description"],
                 "url": project_data_dict["url"],
                 "creator_id": project_data_dict["creator_id"],

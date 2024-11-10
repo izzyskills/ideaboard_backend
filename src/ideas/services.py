@@ -2,10 +2,19 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 import uuid
 from fastapi import HTTPException
+from sqlalchemy.dialects.postgresql import array_agg
 from sqlmodel import and_, desc, func, or_, select, case
 from sqlmodel.sql.expression import Select
 from sqlmodel.ext.asyncio.session import AsyncSession
-from src.db.models import Idea, Comment, Project, Vote, Category, User
+from src.db.models import (
+    Idea,
+    Comment,
+    IdeaCategoryAssociation,
+    Project,
+    Vote,
+    Category,
+    User,
+)
 from src.errors import (
     CategoryNotFound,
     IdeaNotFound,
@@ -89,19 +98,25 @@ class IdeaService:
                     func.count(case((Comment.user_id == current_user_id, 1))).label(
                         "user_commented"
                     ),
+                    array_agg(Category.name).label("category_names"),
                 )
                 .join(Project, Idea.project_id == Project.id)
                 .join(User, Idea.creator_id == User.id)
-                .outerjoin(Vote)
+                .outerjoin(Vote, Vote.idea_id == Idea.id)
                 .outerjoin(Comment, Comment.idea_id == Idea.id)
+                .outerjoin(
+                    IdeaCategoryAssociation, IdeaCategoryAssociation.idea_id == Idea.id
+                )
+                .outerjoin(Category, Category.id == IdeaCategoryAssociation.category_id)
+                .group_by(Idea.id, Project.id, User.id)
             )
 
-            # Apply filters
-            if params.category_ids:
-                main_query = main_query.join(IdeaCategory).where(
-                    IdeaCategory.category_id.in_(params.category_ids)
-                )
-
+            # # Apply filters
+            # if params.category_ids:
+            #     main_query = main_query.join(IdeaCategory).where(
+            #         IdeaCategory.category_id.in_(params.category_ids)
+            #     )
+            #
             if params.project_id:
                 main_query = main_query.where(Idea.project_id == params.project_id)
 
@@ -111,6 +126,9 @@ class IdeaService:
                     or_(
                         Idea.title.ilike(search_pattern),
                         Idea.description.ilike(search_pattern),
+                        Project.name.ilike(search_pattern),
+                        User.username.ilike(search_pattern),
+                        Category.name.ilike(search_pattern),
                     )
                 )
 
@@ -152,10 +170,14 @@ class IdeaService:
             comments_rows = comments_results.all()
 
             # Group comments by idea_id
+            comment_count = {}
             comments_by_idea = {}
             for comment in comments_rows:
                 if comment.idea_id not in comments_by_idea:
                     comments_by_idea[comment.idea_id] = []
+                if comment.idea_id not in comment_count:
+                    comment_count[comment.idea_id] = 0
+                comment_count[comment.idea_id] += 1
                 if (
                     len(comments_by_idea[comment.idea_id]) < 2
                 ):  # Only keep latest 2 comments
@@ -179,6 +201,7 @@ class IdeaService:
                     "creator_id": str(row.Idea.creator_id),
                     "creator_username": row.creator_username,
                     "created_at": row.Idea.created_at.isoformat(),
+                    "category_names": row.category_names,
                     "votes": {
                         "upvotes": row.upvotes,
                         "downvotes": row.downvotes,
@@ -186,6 +209,7 @@ class IdeaService:
                         "score": row.upvotes - row.downvotes,
                     },
                     "comments": comments_by_idea.get(row.Idea.id, []),
+                    "comments_count": comment_count.get(row.Idea.id, 0),
                 }
 
                 # Add user-specific data if user_id provided
@@ -198,7 +222,7 @@ class IdeaService:
                             else None
                         ),
                     }
-                    idea_dict["user_commented"] = bool(row.user_commented)
+                    idea_dict["has_commented"] = bool(row.user_commented)
 
                 ideas_list.append(idea_dict)
 
@@ -238,12 +262,16 @@ class IdeaService:
                     func.count(case((Comment.user_id == current_user_id, 1))).label(
                         "user_commented"
                     ),
+                    array_agg(Category.name).label("category_names"),
                 )
-                .select_from(Idea)
-                .outerjoin(Vote)
-                .join(Project, Project.id == Idea.project_id)
-                .join(User, User.id == Idea.creator_id)
+                .join(Project, Idea.project_id == Project.id)
+                .join(User, Idea.creator_id == User.id)
+                .outerjoin(Vote, Vote.idea_id == Idea.id)
                 .outerjoin(Comment, Comment.idea_id == Idea.id)
+                .outerjoin(
+                    IdeaCategoryAssociation, IdeaCategoryAssociation.idea_id == Idea.id
+                )
+                .outerjoin(Category, Category.id == IdeaCategoryAssociation.category_id)
                 .where(Idea.id == idea_id)
                 .group_by(Idea.id, Project.id, User.id)
             )
@@ -284,6 +312,7 @@ class IdeaService:
                 "creator_id": str(idea.creator_id),
                 "creator_username": row.creator_username,
                 "created_at": idea.created_at.isoformat(),
+                "category_names": row.category_names,
                 "votes": {
                     "upvotes": row.upvotes,
                     "downvotes": row.downvotes,
@@ -310,6 +339,7 @@ class IdeaService:
 
             # Add user-specific data if user_id was provided
             if current_user_id:
+                idea_dict["has_commented"] = bool(row.user_commented)
                 idea_dict["user_vote"] = {
                     "has_voted": bool(row.user_upvoted or row.user_downvoted),
                     "is_upvote": (
@@ -318,7 +348,6 @@ class IdeaService:
                         else None
                     ),
                 }
-                idea_dict["user_commented"] = bool(row.user_commented)
 
             return idea_dict
 

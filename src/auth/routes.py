@@ -67,35 +67,11 @@ async def register_user(
     }
 
 
-@auth_router.get("/verify/{token}")
-async def verify_user_account(token: str, session: AsyncSession = Depends(get_session)):
-    token = decode_url_safe_token(token)
-
-    user_email = token.get("email")
-
-    if user_email:
-        user = await user_service.get_user_by_email(user_email, session)
-        if not user:
-            raise UserNotFound()
-
-        await user_service.update_user(user, {"is_verified": True}, session)
-
-        return JSONResponse(
-            content={"message": "Account verified successfully"},
-            status_code=status.HTTP_200_OK,
-        )
-
-    return JSONResponse(
-        content={"message": "Error occured during verification"},
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-    )
-
-
 @auth_router.post("/login")
 async def login_users(
     login_data: UserLoginModel,
+    response: Response,
     session: AsyncSession = Depends(get_session),
-    response: Response = None,
 ):
     email = login_data.email
     password = login_data.password
@@ -104,7 +80,7 @@ async def login_users(
 
     if user is not None:
         password_valid = verify_password(password, user.password_hash)
-        if password_valid and not (user.is_verified):
+        if password_valid and not user.is_verified:
             send_verification_mail(email)
             raise AccountNotVerified()
 
@@ -113,19 +89,28 @@ async def login_users(
                 user_data={
                     "email": user.email,
                     "user_id": str(user.id),
+                    "username": user.username,
                 }
             )
             refresh_token = create_access_token(
-                user_data={"email": user.email, "user_id": str(user.id)},
+                user_data={
+                    "email": user.email,
+                    "user_id": str(user.id),
+                    "username": user.username,
+                },
                 refresh=True,
                 expiry=timedelta(days=REFRESH_TOKEN_EXPIRY),
             )
 
+            # Set refresh token cookie with proper attributes
             response.set_cookie(
                 key="refresh_token",
                 value=refresh_token,
                 httponly=True,
-                max_age=REFRESH_TOKEN_EXPIRY * 24 * 60 * 60,  # Convert days to seconds
+                secure=True,  # Enable for HTTPS
+                samesite="lax",  # Protect against CSRF
+                max_age=REFRESH_TOKEN_EXPIRY * 24 * 60 * 60,
+                path="/auth/refresh_token",  # Restrict cookie to refresh endpoint
             )
 
             return JSONResponse(
@@ -141,7 +126,10 @@ async def login_users(
 
 @auth_router.get("/refresh_token")
 async def get_new_access_token(request: Request, response: Response = None):
+    print("refresh token")
+    print(request)
     refresh_token = request.cookies.get("refresh_token")
+    print(refresh_token)
     if not refresh_token:
         raise InvalidToken
 
@@ -233,3 +221,8 @@ async def reset_account_password(
         content={"message": "Error occured during password reset."},
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
     )
+
+
+@auth_router.get("/test-refresh-token")
+async def test_refresh_token():
+    raise InvalidCredentials()

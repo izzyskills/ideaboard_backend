@@ -35,7 +35,7 @@ async def create_project(
     token: dict = Depends(AccessTokenBearer()),
     session: AsyncSession = Depends(get_session),
 ):
-    if str(token["user"]["user_id"] != project_data.creator_id):
+    if str(token["user"]["user_id"]) != str(project_data.creator_id):
         raise InvalidCredentials
     project = await project_servie.create_project(project_data, session)
     return project
@@ -51,7 +51,7 @@ async def update_project(
     project = await project_servie.get_project_by_id(project_id, session)
     if project is None:
         raise ProjectNotFound
-    if str(token["user"]["user_id"] != project.creator_id):
+    if str(token["user"]["user_id"]) != str(project.creator_id):
         raise InvalidCredentials
 
     updated_project = await project_servie.update_project(
@@ -70,7 +70,7 @@ async def delete_project(
     if project is None:
         raise ProjectNotFound
 
-    if str(token["user"]["user_id"] != project.creator_id):
+    if str(token["user"]["user_id"]) != str(project.creator_id):
         raise InvalidCredentials
 
     deleted_project = await project_servie.delete_project(project_id, session)

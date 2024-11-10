@@ -25,6 +25,8 @@ class UserService:
     async def create_user(self, user_data: UserCreateModel, session: AsyncSession):
         user_data_dict = user_data.model_dump()
         user_data_dict["username"] = user_data_dict["username"].lower()
+        user_data_dict["email"] = user_data_dict["email"].lower()
+        user_data_dict["is_verified"] = True
 
         new_user = User(**user_data_dict)
 
