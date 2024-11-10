@@ -31,7 +31,9 @@ async def create_idea(
     token: dict = Depends(AccessTokenBearer()),
     session: AsyncSession = Depends(get_session),
 ):
-    if str(token["user"]["user_id"]) != idea_data.creator_id:
+    print(idea_data.creator_id)
+    print(token["user"]["user_id"])
+    if str(token["user"]["user_id"]) != str(idea_data.creator_id):
         raise InvalidCredentials
     idea = await idea_service.create_idea(idea_data, session)
     return idea
@@ -51,9 +53,14 @@ async def search_ideas_route(
 
 @idea_router.get("/{idea_id}")
 async def get_idea_by_id(
-    idea_id: uuid.UUID, session: AsyncSession = Depends(get_session)
+    idea_id: uuid.UUID,
+    current_user: Optional[User] = Depends(get_optional_current_user),
+    session: AsyncSession = Depends(get_session),
 ):
-    idea = await idea_service.get_idea_by_id(idea_id, session)
+    print(current_user)
+    idea = await idea_service.get_idea_by_id(
+        idea_id, session, current_user.id if current_user else None
+    )
     if idea is None:
         raise IdeaNotFound
     return idea
@@ -66,7 +73,7 @@ async def make_comment(
     token: dict = Depends(AccessTokenBearer()),
     session: AsyncSession = Depends(get_session),
 ):
-    if str(token["user"]["user_id"]) != comment_data.user_id:
+    if str(token["user"]["user_id"]) != str(comment_data.user_id):
         raise InvalidCredentials
     if idea_id != comment_data.idea_id:
         raise IdeaIdMismatch

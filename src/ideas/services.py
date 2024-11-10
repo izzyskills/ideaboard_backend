@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 import uuid
+from fastapi import HTTPException
 from sqlmodel import and_, desc, func, or_, select, case
 from sqlmodel.sql.expression import Select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -32,13 +33,14 @@ class IdeaService:
             raise UserNotFound
 
         # Validate categories
-        category_ids = idea_data_dict["category_ids"]
+        category_ids = idea_data_dict["category_id"]
         categories = await session.exec(
-            select(Category).where(Category.id.in_(category_ids))
+            select(Category).where(Category.id == category_ids)
         )
         categories = categories.all()
-        if len(categories) != len(category_ids):
+        if categories is None:
             raise CategoryNotFound
+        print(categories)
 
         # Validate project
         project_id = idea_data_dict["project_id"]
@@ -68,108 +70,125 @@ class IdeaService:
         session: AsyncSession,
         params: IdeaSearchParams,
         current_user_id: Optional[uuid.UUID] = None,
-    ) -> Tuple[List[Dict], Optional[uuid.UUID]]:
+    ) -> Tuple[List[Dict], Optional[datetime]]:
         try:
-            # Start with base query for ideas
-            query = (
+            # First, get the ideas with votes and basic info
+            main_query = (
                 select(
                     Idea,
                     Project.name.label("project_name"),
                     User.username.label("creator_username"),
-                    func.count(Vote.id)
-                    .filter(Vote.is_upvote.is_(True))
-                    .label("upvotes"),
-                    func.count(Vote.id)
-                    .filter(Vote.is_upvote.is_(False))
-                    .label("downvotes"),
-                    func.count(
-                        case(
-                            (
-                                and_(
-                                    Vote.user_id == current_user_id,
-                                    Vote.is_upvote.is_(True),
-                                ),
-                                1,
-                            )
-                        )
+                    func.count(case((Vote.is_upvote.is_(True), 1))).label("upvotes"),
+                    func.count(case((Vote.is_upvote.is_(False), 1))).label("downvotes"),
+                    func.bool_or(
+                        and_(Vote.user_id == current_user_id, Vote.is_upvote.is_(True))
                     ).label("user_upvoted"),
-                    func.count(
-                        case(
-                            (
-                                and_(
-                                    Vote.user_id == current_user_id,
-                                    Vote.is_upvote.is_(False),
-                                ),
-                                1,
-                            )
-                        )
+                    func.bool_or(
+                        and_(Vote.user_id == current_user_id, Vote.is_upvote.is_(False))
                     ).label("user_downvoted"),
+                    func.count(case((Comment.user_id == current_user_id, 1))).label(
+                        "user_commented"
+                    ),
                 )
-                .select_from(Idea)
+                .join(Project, Idea.project_id == Project.id)
+                .join(User, Idea.creator_id == User.id)
                 .outerjoin(Vote)
-                .join(Project, Project.id == Idea.project_id)
-                .join(User, User.id == Idea.creator_id)
-                .group_by(Idea.id, Project.id, User.id)
+                .outerjoin(Comment, Comment.idea_id == Idea.id)
             )
 
-            filters = []
-
-            # Category filter
+            # Apply filters
             if params.category_ids:
-                filters.append(
-                    Idea.categories.any(Category.id.in_(params.category_ids))
+                main_query = main_query.join(IdeaCategory).where(
+                    IdeaCategory.category_id.in_(params.category_ids)
                 )
 
-            # Project filter
             if params.project_id:
-                filters.append(Idea.project_id == params.project_id)
+                main_query = main_query.where(Idea.project_id == params.project_id)
 
-            # Text search using the pre-computed search_vector
             if params.text:
-                search_query = f"%{params.text}%"
-                filters.append(
+                search_pattern = f"%{params.text}%"
+                main_query = main_query.where(
                     or_(
-                        Idea.title.ilike(search_query),
-                        Idea.description.ilike(search_query),
+                        Idea.title.ilike(search_pattern),
+                        Idea.description.ilike(search_pattern),
                     )
                 )
-            # Cursor pagination
+
             if params.cursor:
-                filters.append(Idea.created_at < params.cursor)
+                main_query = main_query.where(Idea.created_at < params.cursor)
 
-            # Apply all filters
-            if filters:
-                query = query.where(and_(*filters))
+            # Add grouping and ordering
+            main_query = (
+                main_query.group_by(
+                    Idea.id,
+                    Project.name,
+                    User.username,
+                )
+                .order_by(Idea.created_at.desc())
+                .limit(params.limit)
+            )
 
-            # Add ordering and limit
-            query = query.order_by(desc(Idea.created_at)).limit(params.limit)
-
-            # Execute query
-            results = await session.execute(query)
+            # Execute main query
+            results = await session.execute(main_query)
             rows = results.all()
 
-            # Process results into dictionaries
-            ideas_with_votes = []
+            # Get all idea IDs from the results
+            idea_ids = [row.Idea.id for row in rows]
+
+            # Fetch latest comments for all ideas in a single query
+            comments_query = (
+                select(
+                    Comment.idea_id,
+                    Comment.content,
+                    Comment.created_at,
+                    User.username.label("commenter_username"),
+                )
+                .join(User, User.id == Comment.user_id)
+                .where(Comment.idea_id.in_(idea_ids))
+                .order_by(Comment.idea_id, Comment.created_at.desc())
+            )
+
+            comments_results = await session.execute(comments_query)
+            comments_rows = comments_results.all()
+
+            # Group comments by idea_id
+            comments_by_idea = {}
+            for comment in comments_rows:
+                if comment.idea_id not in comments_by_idea:
+                    comments_by_idea[comment.idea_id] = []
+                if (
+                    len(comments_by_idea[comment.idea_id]) < 2
+                ):  # Only keep latest 2 comments
+                    comments_by_idea[comment.idea_id].append(
+                        {
+                            "content": comment.content,
+                            "created_at": comment.created_at.isoformat(),
+                            "commenter_username": comment.commenter_username,
+                        }
+                    )
+
+            # Process results
+            ideas_list = []
             for row in rows:
-                idea = row[0]  # The Idea object
                 idea_dict = {
-                    "id": str(idea.id),
-                    "title": idea.title,
-                    "description": idea.description,
-                    "project_id": str(idea.project_id),
+                    "id": str(row.Idea.id),
+                    "title": row.Idea.title,
+                    "description": row.Idea.description,
+                    "project_id": str(row.Idea.project_id),
                     "project_name": row.project_name,
-                    "creator_id": str(idea.creator_id),
+                    "creator_id": str(row.Idea.creator_id),
                     "creator_username": row.creator_username,
-                    "created_at": idea.created_at.isoformat(),
+                    "created_at": row.Idea.created_at.isoformat(),
                     "votes": {
                         "upvotes": row.upvotes,
                         "downvotes": row.downvotes,
                         "total": row.upvotes + row.downvotes,
                         "score": row.upvotes - row.downvotes,
                     },
+                    "comments": comments_by_idea.get(row.Idea.id, []),
                 }
 
-                # Add user's vote status if user_id was provided
+                # Add user-specific data if user_id provided
                 if current_user_id:
                     idea_dict["user_vote"] = {
                         "has_voted": bool(row.user_upvoted or row.user_downvoted),
@@ -179,65 +198,83 @@ class IdeaService:
                             else None
                         ),
                     }
+                    idea_dict["user_commented"] = bool(row.user_commented)
 
-                ideas_with_votes.append(idea_dict)
+                ideas_list.append(idea_dict)
 
             # Calculate next cursor
-            next_cursor = rows[-1][0].created_at if len(rows) == params.limit else None
+            next_cursor = (
+                rows[-1].Idea.created_at if len(rows) == params.limit else None
+            )
 
-            return ideas_with_votes, next_cursor
-
+            return ideas_list, next_cursor
         except Exception as e:
-            print(f"Search error: {str(e)}")
+            print(f"Error in search_ideas: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail="An error occurred while searching ideas"
+            )
 
     async def get_idea_by_id(
         self,
         idea_id: uuid.UUID,
         session: AsyncSession,
-        current_user_id: uuid.UUID | None = None,
+        current_user_id: Optional[uuid.UUID] = None,
     ):
-        query = (
-            select(
-                Idea,
-                Project.name.label("project_name"),
-                User.username.label("creator_username"),
-                func.count(Vote.id).filter(Vote.is_upvote.is_(True)).label("upvotes"),
-                func.count(Vote.id)
-                .filter(Vote.is_upvote.is_(False))
-                .label("downvotes"),
-                func.count(
-                    case(
-                        (
-                            and_(
-                                Vote.user_id == current_user_id,
-                                Vote.is_upvote.is_(True),
-                            ),
-                            1,
-                        )
-                    )
-                ).label("user_upvoted"),
-                func.count(
-                    case(
-                        (
-                            and_(
-                                Vote.user_id == current_user_id,
-                                Vote.is_upvote.is_(False),
-                            ),
-                            1,
-                        )
-                    )
-                ).label("user_downvoted"),
+        try:
+            # Main query for idea details and votes
+            main_query = (
+                select(
+                    Idea,
+                    Project.name.label("project_name"),
+                    User.username.label("creator_username"),
+                    func.count(case((Vote.is_upvote.is_(True), 1))).label("upvotes"),
+                    func.count(case((Vote.is_upvote.is_(False), 1))).label("downvotes"),
+                    func.bool_or(
+                        and_(Vote.user_id == current_user_id, Vote.is_upvote.is_(True))
+                    ).label("user_upvoted"),
+                    func.bool_or(
+                        and_(Vote.user_id == current_user_id, Vote.is_upvote.is_(False))
+                    ).label("user_downvoted"),
+                    func.count(case((Comment.user_id == current_user_id, 1))).label(
+                        "user_commented"
+                    ),
+                )
+                .select_from(Idea)
+                .outerjoin(Vote)
+                .join(Project, Project.id == Idea.project_id)
+                .join(User, User.id == Idea.creator_id)
+                .outerjoin(Comment, Comment.idea_id == Idea.id)
+                .where(Idea.id == idea_id)
+                .group_by(Idea.id, Project.id, User.id)
             )
-            .select_from(Idea)
-            .outerjoin(Vote)
-            .join(Project, Project.id == Idea.project_id)
-            .join(User, User.id == Idea.creator_id)
-            .group_by(Idea.id, Project.id, User.id)
-        ).where(Idea.id == idea_id)
-        results = await session.execute(query)
-        row = results.one_or_none()
-        if row:
-            idea = row[0]  # The Idea object
+
+            # Execute main query
+            results = await session.execute(main_query)
+            row = results.one_or_none()
+
+            if not row:
+                return None
+
+            idea = row.Idea
+
+            # Fetch all comments for the idea
+            comments_query = (
+                select(
+                    Comment.id,
+                    Comment.content,
+                    Comment.created_at,
+                    User.username.label("commenter_username"),
+                    User.id.label("commenter_id"),
+                )
+                .join(User, User.id == Comment.user_id)
+                .where(Comment.idea_id == idea_id)
+                .order_by(Comment.created_at.desc())
+            )
+
+            comments_results = await session.execute(comments_query)
+            comments = comments_results.all()
+
+            # Build the response dictionary
             idea_dict = {
                 "id": str(idea.id),
                 "title": idea.title,
@@ -253,9 +290,25 @@ class IdeaService:
                     "total": row.upvotes + row.downvotes,
                     "score": row.upvotes - row.downvotes,
                 },
+                "comments": [
+                    {
+                        "id": str(comment.id),
+                        "content": comment.content,
+                        "created_at": comment.created_at.isoformat(),
+                        "commenter_username": comment.commenter_username,
+                        "commenter_id": str(comment.commenter_id),
+                        "is_user_comment": (
+                            str(comment.commenter_id) == str(current_user_id)
+                            if current_user_id
+                            else False
+                        ),
+                    }
+                    for comment in comments
+                ],
+                "comments_count": len(comments),
             }
 
-            # Add user's vote status if user_id was provided
+            # Add user-specific data if user_id was provided
             if current_user_id:
                 idea_dict["user_vote"] = {
                     "has_voted": bool(row.user_upvoted or row.user_downvoted),
@@ -265,9 +318,15 @@ class IdeaService:
                         else None
                     ),
                 }
+                idea_dict["user_commented"] = bool(row.user_commented)
+
             return idea_dict
-        else:
-            return None
+
+        except Exception as e:
+            print(f"Error in get_idea_by_id: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail="An error occurred while fetching the idea"
+            )
 
     async def create_comment(
         self, comment_data: CommentCreationModel, session: AsyncSession

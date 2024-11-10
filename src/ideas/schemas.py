@@ -7,9 +7,8 @@ from typing import List, Optional
 class IdeaCreationModel(BaseModel):
     title: str
     description: str
-    category_ids: List[int]
+    category_id: int
     creator_id: uuid.UUID
-    catergory_name: str
     project_id: uuid.UUID
 
 
