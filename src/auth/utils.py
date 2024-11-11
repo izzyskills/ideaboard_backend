@@ -12,7 +12,7 @@ from src.config import Config
 passwd_context = CryptContext(schemes=["bcrypt"])
 
 
-ACCESS_TOKEN_EXPIRY = 3600
+ACCESS_TOKEN_EXPIRY = 1
 
 
 def generate_passwd_hash(password: str) -> str:
@@ -32,7 +32,7 @@ def create_access_token(
 
     payload["user"] = user_data
     payload["exp"] = datetime.now() + (
-        expiry if expiry is not None else timedelta(seconds=ACCESS_TOKEN_EXPIRY)
+        expiry if expiry is not None else timedelta(hours=ACCESS_TOKEN_EXPIRY)
     )
     payload["jti"] = str(uuid.uuid4())
 

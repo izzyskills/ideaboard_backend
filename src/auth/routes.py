@@ -1,6 +1,14 @@
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, status, BackgroundTasks, Response, Request
+from fastapi import (
+    APIRouter,
+    Cookie,
+    Depends,
+    status,
+    BackgroundTasks,
+    Response,
+    Request,
+)
 from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -125,10 +133,9 @@ async def login_users(
 
 
 @auth_router.get("/refresh_token")
-async def get_new_access_token(request: Request, response: Response = None):
+async def get_new_access_token(request: Request, refresh_token: str = Cookie(None)):
     print("refresh token")
     print(request)
-    refresh_token = request.cookies.get("refresh_token")
     print(refresh_token)
     if not refresh_token:
         raise InvalidToken

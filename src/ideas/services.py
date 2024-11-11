@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Tuple
 import uuid
 from fastapi import HTTPException
 from sqlalchemy.dialects.postgresql import array_agg
-from sqlmodel import and_, desc, func, or_, select, case
+from sqlmodel import and_, desc, func, or_, select, case, distinct
 from sqlmodel.sql.expression import Select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from src.db.models import (
@@ -81,14 +81,27 @@ class IdeaService:
         current_user_id: Optional[uuid.UUID] = None,
     ) -> Tuple[List[Dict], Optional[datetime]]:
         try:
+            upvotes_subquery = (
+                select(Vote.idea_id, func.count(Vote.id).label("upvotes"))
+                .where(Vote.is_upvote.is_(True))
+                .group_by(Vote.idea_id)
+                .subquery()
+            )
+
+            downvotes_subquery = (
+                select(Vote.idea_id, func.count(Vote.id).label("downvotes"))
+                .where(Vote.is_upvote.is_(False))
+                .group_by(Vote.idea_id)
+                .subquery()
+            )
             # First, get the ideas with votes and basic info
             main_query = (
                 select(
                     Idea,
                     Project.name.label("project_name"),
                     User.username.label("creator_username"),
-                    func.count(case((Vote.is_upvote.is_(True), 1))).label("upvotes"),
-                    func.count(case((Vote.is_upvote.is_(False), 1))).label("downvotes"),
+                    func.coalesce(upvotes_subquery.c.upvotes, 0).label("upvotes"),
+                    func.coalesce(downvotes_subquery.c.downvotes, 0).label("downvotes"),
                     func.bool_or(
                         and_(Vote.user_id == current_user_id, Vote.is_upvote.is_(True))
                     ).label("user_upvoted"),
@@ -98,7 +111,7 @@ class IdeaService:
                     func.count(case((Comment.user_id == current_user_id, 1))).label(
                         "user_commented"
                     ),
-                    array_agg(Category.name).label("category_names"),
+                    array_agg(distinct(Category.name)).label("category_names"),
                 )
                 .join(Project, Idea.project_id == Project.id)
                 .join(User, Idea.creator_id == User.id)
@@ -108,7 +121,15 @@ class IdeaService:
                     IdeaCategoryAssociation, IdeaCategoryAssociation.idea_id == Idea.id
                 )
                 .outerjoin(Category, Category.id == IdeaCategoryAssociation.category_id)
-                .group_by(Idea.id, Project.id, User.id)
+                .outerjoin(upvotes_subquery, upvotes_subquery.c.idea_id == Idea.id)
+                .outerjoin(downvotes_subquery, downvotes_subquery.c.idea_id == Idea.id)
+                .group_by(
+                    Idea.id,
+                    Project.id,
+                    User.id,
+                    upvotes_subquery.c.upvotes,
+                    downvotes_subquery.c.downvotes,
+                )
             )
 
             # # Apply filters
@@ -245,14 +266,29 @@ class IdeaService:
         current_user_id: Optional[uuid.UUID] = None,
     ):
         try:
+            # Subqueries for upvotes and downvotes
+            upvotes_subquery = (
+                select(Vote.idea_id, func.count(Vote.id).label("upvotes"))
+                .where(Vote.is_upvote.is_(True))
+                .group_by(Vote.idea_id)
+                .subquery()
+            )
+
+            downvotes_subquery = (
+                select(Vote.idea_id, func.count(Vote.id).label("downvotes"))
+                .where(Vote.is_upvote.is_(False))
+                .group_by(Vote.idea_id)
+                .subquery()
+            )
+
             # Main query for idea details and votes
             main_query = (
                 select(
                     Idea,
                     Project.name.label("project_name"),
                     User.username.label("creator_username"),
-                    func.count(case((Vote.is_upvote.is_(True), 1))).label("upvotes"),
-                    func.count(case((Vote.is_upvote.is_(False), 1))).label("downvotes"),
+                    func.coalesce(upvotes_subquery.c.upvotes, 0).label("upvotes"),
+                    func.coalesce(downvotes_subquery.c.downvotes, 0).label("downvotes"),
                     func.bool_or(
                         and_(Vote.user_id == current_user_id, Vote.is_upvote.is_(True))
                     ).label("user_upvoted"),
@@ -262,7 +298,7 @@ class IdeaService:
                     func.count(case((Comment.user_id == current_user_id, 1))).label(
                         "user_commented"
                     ),
-                    array_agg(Category.name).label("category_names"),
+                    array_agg(distinct(Category.name)).label("category_names"),
                 )
                 .join(Project, Idea.project_id == Project.id)
                 .join(User, Idea.creator_id == User.id)
@@ -272,8 +308,16 @@ class IdeaService:
                     IdeaCategoryAssociation, IdeaCategoryAssociation.idea_id == Idea.id
                 )
                 .outerjoin(Category, Category.id == IdeaCategoryAssociation.category_id)
+                .outerjoin(upvotes_subquery, upvotes_subquery.c.idea_id == Idea.id)
+                .outerjoin(downvotes_subquery, downvotes_subquery.c.idea_id == Idea.id)
                 .where(Idea.id == idea_id)
-                .group_by(Idea.id, Project.id, User.id)
+                .group_by(
+                    Idea.id,
+                    Project.id,
+                    User.id,
+                    upvotes_subquery.c.upvotes,
+                    downvotes_subquery.c.downvotes,
+                )
             )
 
             # Execute main query
