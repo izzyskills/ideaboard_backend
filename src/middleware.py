@@ -10,7 +10,8 @@ import logging
 logger = logging.getLogger("uvicorn.access")
 logger.disabled = True
 
-origins = os.getenv("ALLOWED_HOSTS", "").split(",")
+hosts = os.getenv("ALLOWED_HOSTS", "").split(",")
+origins = os.getenv("ALLOWED_ORIGINS", "").split(",")
 
 
 def register_middleware(app: FastAPI):
@@ -29,7 +30,7 @@ def register_middleware(app: FastAPI):
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=origins,
         allow_methods=["*"],
         allow_headers=["*"],
         allow_credentials=True,

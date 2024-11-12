@@ -1,14 +1,6 @@
 from datetime import datetime, timedelta
 
-from fastapi import (
-    APIRouter,
-    Cookie,
-    Depends,
-    status,
-    BackgroundTasks,
-    Response,
-    Request,
-)
+from fastapi import APIRouter, Depends, status, BackgroundTasks, Response, Request
 from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -100,26 +92,26 @@ async def login_users(
                     "username": user.username,
                 }
             )
-            # refresh_token = create_access_token(
-            #     user_data={
-            #         "email": user.email,
-            #         "user_id": str(user.id),
-            #         "username": user.username,
-            #     },
-            #     refresh=True,
-            #     expiry=timedelta(days=REFRESH_TOKEN_EXPIRY),
-            # )
+            refresh_token = create_access_token(
+                user_data={
+                    "email": user.email,
+                    "user_id": str(user.id),
+                    "username": user.username,
+                },
+                refresh=True,
+                expiry=timedelta(days=REFRESH_TOKEN_EXPIRY),
+            )
 
             # Set refresh token cookie with proper attributes
-            # response.set_cookie(
-            #     key="refresh_token",
-            #     value=refresh_token,
-            #     httponly=True,
-            #     secure=True,  # Enable for HTTPS
-            #     samesite="lax",  # Protect against CSRF
-            #     max_age=REFRESH_TOKEN_EXPIRY * 24 * 60 * 60,
-            #     path="/auth/refresh_token",  # Restrict cookie to refresh endpoint
-            # )
+            response.set_cookie(
+                key="refresh_token",
+                value=refresh_token,
+                httponly=True,
+                secure=True,  # Enable for HTTPS
+                samesite="lax",  # Protect against CSRF
+                max_age=REFRESH_TOKEN_EXPIRY * 24 * 60 * 60,
+                path="/auth/refresh_token",  # Restrict cookie to refresh endpoint
+            )
 
             return JSONResponse(
                 content={
@@ -133,7 +125,9 @@ async def login_users(
 
 
 @auth_router.get("/refresh_token")
-async def get_new_access_token(request: Request, refresh_token: str = Cookie(None)):
+async def get_new_access_token(request: Request, response: Response = None):
+
+    refresh_token = request.cookies.get("refresh_token")
     if not refresh_token:
         raise InvalidToken
 
@@ -225,8 +219,3 @@ async def reset_account_password(
         content={"message": "Error occured during password reset."},
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
     )
-
-
-@auth_router.get("/test-refresh-token")
-async def test_refresh_token():
-    raise InvalidCredentials()
