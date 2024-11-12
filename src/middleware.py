@@ -31,12 +31,12 @@ def register_middleware(app: FastAPI):
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
+        allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
-        allow_credentials=True,
     )
 
     app.add_middleware(
         TrustedHostMiddleware,
-        allowed_hosts=origins,
+        allowed_hosts=hosts,
     )
