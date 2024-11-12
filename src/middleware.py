@@ -4,10 +4,13 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 import time
+import os
 import logging
 
 logger = logging.getLogger("uvicorn.access")
 logger.disabled = True
+
+origins = os.getenv("ALLOWED_HOSTS", "").split(",")
 
 
 def register_middleware(app: FastAPI):
@@ -34,5 +37,5 @@ def register_middleware(app: FastAPI):
 
     app.add_middleware(
         TrustedHostMiddleware,
-        allowed_hosts=["localhost", "127.0.0.1", "demo.com"],
+        allowed_hosts=origins,
     )
