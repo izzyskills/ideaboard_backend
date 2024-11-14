@@ -25,7 +25,7 @@ app = FastAPI(
     title="Ideaboard",
     description=description,
     version=version,
-    license_info={"name": "MIT License", "url": "https://opensource.org/license/mit"},
+    license_info={"name": "GPLv3", "url": "https://www.gnu.org/licenses/gpl-3.0.html"},
     contact={
         "name": "Omola Israel",
         "url": "https://github.com/izzyskills",
